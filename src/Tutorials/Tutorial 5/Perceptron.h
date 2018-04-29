@@ -19,18 +19,19 @@ public:
 
 	// Generates random values for each weight and the bias.
 	void RandomizeValues();
+	void RandomizeValues(Perceptron p);
 
 	// 'weights' must be a pointer to an array of floats with length 'featureVectorSize'.
 	void SetWeights(const float* weights);
 
 	float bias = 0.0f;
 
-private:
+//private:
 	// Dynamically allocated array of weights.
 	float* weights;
 
 	// Remembers the size of the allocated arrays.
-	const unsigned int featureVectorSize;
+	unsigned int featureVectorSize;
 };
 
 #endif

@@ -37,13 +37,16 @@ public:
     glm::vec2 MakeDecision(std::vector<glm::vec2> centers);
 
     void SetPosition(glm::vec2 a_position);
-
+	void ChangeState(State s);
 public:
     glm::vec2 oldTile;
     glm::vec2 targetTile;
     float mixPercent = 0.0f;
 
     State currentState;
+	int timingPhase = 1;
+	float stageTimer = 0.f;
+	State prevState;
 
     Name name;
     Map* map;
@@ -63,7 +66,7 @@ public:
 public:
     glm::vec2 oldTile;
     glm::vec2 targetTile;
-    float mixPercent = 0.0f;
+    float mixPercent = 0.0f;	
 
     Map* map;
     glm::vec2 position;
@@ -87,8 +90,8 @@ public:
 
     int GetTiles(glm::vec2 a_coordinate, char(&a_tiles)[5], std::vector<glm::vec2> &centers, glm::vec2 oldTile);
     int GetIndex(glm::vec2 a_coordinate);
-
-private:
+	void SetState(Ghost::State s);
+public:
     Ghost* ghosts[4];
     PacMan* player;
 
@@ -107,7 +110,7 @@ private:
         "### # #    M    # # ###",
         "#   # # ### ### # #   #",
         "# ###   ##MMM##   ### #",
-        "#   # # ####### # #   #",
+        "#   # # ### ### # #   #",
         "### # #         # # ###",
         "#   # # ####### # #   #",
         "# ### # ####### # ### #",

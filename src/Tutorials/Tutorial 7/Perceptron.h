@@ -25,7 +25,6 @@ public:
 
 	float bias = 0.0f;
 
-private:
 	// Dynamically allocated array of weights.
 	float* weights;
 

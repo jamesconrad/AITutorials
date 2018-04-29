@@ -12,6 +12,8 @@
 #include <stdio.h>  // Used for 'printf'
 #include <string>   // Used for 'to_string'
 
+#include <chrono>
+
 #include "Shaders.h"
 #include "ConnectFour.h"
 
@@ -49,12 +51,31 @@ typedef glm::ivec2 ColumnScore;
 const int NIL = -1; // Because NULL is 0 and we use 0
 
 std::vector<float> times;
+int AILevel = 7;
+float aiScoreTotal = 0;
+int aiScoreCount = 0;
+float playerScoreTotal = 0;
+int playerScoreCount = 0;
 
 ColumnScore MaximizePlay(ConnectFourBoard& board, int depth);
 ColumnScore MinimizePlay(ConnectFourBoard& board, int depth);
 
+
 void DrawQuad(glm::vec2, glm::vec2);
 bool GetMouseClicked();
+
+std::chrono::high_resolution_clock::time_point timerStart;
+
+void RestartTimer()
+{
+	std::chrono::high_resolution_clock::time_point timerStart = std::chrono::high_resolution_clock::now();
+}
+
+float StopTimer()
+{
+	return std::chrono::duration<float, std::milli>(std::chrono::high_resolution_clock::now() - timerStart).count();
+}
+
 
 void Initialize()
 {
@@ -99,6 +120,8 @@ ColumnScore MaximizePlay(ConnectFourBoard& board, int depth)
 {
     // Call score of our board
     int score = board.SimpleScoring();
+	aiScoreTotal += score;
+	aiScoreCount++;
 
     // Break
     if (board.IsFinished() || depth == 0) return ColumnScore(NIL, score);
@@ -130,6 +153,8 @@ ColumnScore MaximizePlay(ConnectFourBoard& board, int depth)
 ColumnScore MinimizePlay(ConnectFourBoard& board, int depth)
 {
     int score = board.SimpleScoring();
+	playerScoreTotal += score;
+	playerScoreCount++;
 
     if (board.IsFinished() || depth == 0) return ColumnScore(NIL, score);
 
@@ -155,10 +180,26 @@ ColumnScore MinimizePlay(ConnectFourBoard& board, int depth)
 
 int GenerateComputerDecision()
 {
+	RestartTimer();
+
     ConnectFourBoard tempBoard = mainGameBoard.CreateCopy();
 
-    // Start the AI here
-    ColumnScore aiMove = MaximizePlay(mainGameBoard, 3);
+    ColumnScore aiMove = MaximizePlay(tempBoard, AILevel);
+	
+	printf("AI:%f\nP1:%f\n", aiScoreTotal / aiScoreCount, playerScoreTotal / playerScoreCount);
+	printf("AI:%f, %i\nP1:%f, %i\n", aiScoreTotal, aiScoreCount, playerScoreTotal, playerScoreCount);
+	if (aiScoreTotal / aiScoreCount < playerScoreTotal / playerScoreCount)
+		AILevel = 7;
+	else
+		AILevel = 5;
+
+	aiScoreTotal = 0;
+	aiScoreCount = 0;
+	playerScoreTotal = 0;
+	playerScoreCount = 0;
+
+	times.push_back(StopTimer());
+
     return aiMove[0];
 }
 
@@ -258,11 +299,20 @@ void GUI()
 {
     // Uncomment this when you want to draw the AI compute time history
 
-    // ImGui::Begin("History", 0, ImVec2(100, 50), 0.4f);
-    // {
-    // 
-    // }
-    // ImGui::End();
+    ImGui::Begin("History", 0, ImVec2(100, 50), 0.4f);
+    {
+		if (times.size() > 0)
+		{
+			// Get the min and max values
+			float min = (*std::min_element(std::begin(times), std::end(times))) * 0.99f;
+			float max = (*std::max_element(std::begin(times), std::end(times))) * 1.01f;
+			// And plot it using ImGui
+			ImGui::PlotHistogram("AI Decision Times", &times[0],
+				times.size(), 0, NULL, min, max, ImVec2(0, 80));
+			ImGui::Text("AIDepth: %i", AILevel);
+		}
+    }
+    ImGui::End();
 }
 
 void Cleanup()

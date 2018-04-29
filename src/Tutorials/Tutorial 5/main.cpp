@@ -15,6 +15,9 @@
 #include "Perceptron.h"
 #include "Pong.h"
 
+#include <vector>
+#include <algorithm>
+
 /*---------------------------- Variables ----------------------------*/
 // GLFW window
 GLFWwindow* window;
@@ -39,16 +42,25 @@ const bool USE_CUSTOM_PERCEPTRON_VALUES = false;
 float positionToIntersect = 0.0f;   // Used for the basic AI
 enum Features
 {
-	Delta_PosY = 0, // Difference in position of Paddle and ball (Feature Extraction)
-	Ball_PosX = 1, // is this a good feature to have? (probably not, feature selection exercise!)
-	Ball_VelY = 2,
-	COUNT = 3
+	Delta_PosY, // Difference in position of Paddle and ball (Feature Extraction)
+	Ball_PosX, // is this a good feature to have? (probably not, feature selection exercise!)
+	Ball_VelY,
+	COUNT
 };
 
 // Global variables
 PongPaddle leftPaddle, rightPaddle;
 PongBall ball(glm::vec2(0.0f), glm::vec2(1.0f, 1.0f));
 Perceptron perceptron(Features::COUNT);
+Perceptron leftperceptron(Features::COUNT);
+
+bool aiLeft = false;
+bool selfLearn = false;
+
+int totalScore[2] = { 0,0 };
+int scores[2] = { 0,0 };
+std::vector<float> hitOffset[2] = {};
+std::vector<float> missOffset[2] = {};
 
 // Functions
 void DrawQuad(glm::vec2, glm::vec2, glm::vec3 = glm::vec3(1.0f));
@@ -71,6 +83,8 @@ void Initialize()
 	{
 		perceptron.RandomizeValues();
 	}
+
+	leftperceptron.RandomizeValues();
 
     // Create a shader for the lab
     GLuint vs = buildShader(GL_VERTEX_SHADER, ASSETS"primitive.vs");
@@ -115,23 +129,47 @@ void Update(float a_deltaTime)
 
     // You can look in this ball class to see how the original ball moves. You need to
     // in order to implement the 'predict the ball' or 'invisible ball' methods.
-    auto bouncedSide = ball.Move(a_deltaTime, leftPaddle, rightPaddle);
+    PongBall::MoveReturn moveRet = ball.Move(a_deltaTime, leftPaddle, rightPaddle);
+	if (moveRet.scored)
+	{
+		scores[moveRet.bos]++;
+		missOffset[!moveRet.bos].push_back(moveRet.missOffset);
+	}
+	//else if (moveRet.bos == PongBall::RIGHT || moveRet.bos == PongBall::LEFT)
+	//	hitOffset[moveRet.bos].push_back(moveRet.hitOffset);
 
     /*  When creating the Pong AI, it needs to follow the same rules as the player.
     Instead of explicitly setting the y position to follow the ball, use AI logic, and
     PongPaddle::MoveUp() and PongPaddle::MoveDown() functions to control the paddle. */
 
-    // Left side player
-    if (glfwGetKey(window, GLFW_KEY_W))
-        leftPaddle.MoveUp(a_deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_S))
-        leftPaddle.MoveDown(a_deltaTime);
+	// Left side player
+	if (!aiLeft)
+	{
+		if (glfwGetKey(window, GLFW_KEY_W))
+			leftPaddle.MoveUp(a_deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_S))
+			leftPaddle.MoveDown(a_deltaTime);
+	}
+	else
+	{
+		float featureVector[Features::COUNT] = { 0.0f };
+		featureVector[Features::Delta_PosY] = ball.position.y - rightPaddle.yPos;
+		featureVector[Features::Ball_PosX] = ball.position.x / width;
+		featureVector[Features::Ball_VelY] = ball.velocity.y;
+
+		float movement = leftperceptron.Evaluate(featureVector);
+
+		if (movement > 0.55f)
+			leftPaddle.MoveUp(a_deltaTime);
+		if (movement < 0.45f)
+			leftPaddle.MoveDown(a_deltaTime);
+	}
 
     // For the right-side AI
     {
 		float featureVector[Features::COUNT] = { 0.0f };
 		featureVector[Features::Delta_PosY] = ball.position.y - rightPaddle.yPos;
-		featureVector[Features::Ball_PosX] = ball.position.x;
+		featureVector[Features::Ball_PosX] = ball.position.x / width;
 		featureVector[Features::Ball_VelY] = ball.velocity.y;
 
 		float movement = perceptron.Evaluate(featureVector);
@@ -170,6 +208,34 @@ void Render()
     glUseProgram(GL_NONE);
 }
 
+const char* Label(int i, bool left)
+{
+	if (left)
+	{
+		switch (i)
+		{
+		case 0: return "LDelta_PosY";
+		case 1: return "LBall_PosX";
+		case 2: return "LBall_VelY";
+		default: return "L?";
+		}
+	}
+	else
+	{
+		switch (i)
+		{
+		case 0: return "RDelta_PosY";
+		case 1: return "RBall_PosX";
+		case 2: return "RBall_VelY";
+		default: return "R?";
+		}
+	}
+}
+
+float halfHeight = height / 2;
+float min = halfHeight * -1;
+float max = halfHeight;
+
 void GUI()
 {
     ImGui::Begin("Settings", 0, ImVec2(100, 50), 0.4f);
@@ -177,6 +243,86 @@ void GUI()
         // Show some basic stats in the settings window 
         ImGui::Text("%.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 		ImGui::Text("Score: %i : %i", leftPaddle.score, rightPaddle.score);
+
+		ImGui::Text("Right Weights:");
+		for (int i = 0; i < perceptron.featureVectorSize; i++)
+			ImGui::SliderFloat(Label(i, false), (perceptron.weights + i), -2.f, 2.f);
+		ImGui::SliderFloat("Rbias", &perceptron.bias, -2.f, 2.f);
+
+		// Hit Offsets
+		//ImGui::PlotHistogram("Hit Offset", hitOffset[0].data(), hitOffset[0].size(), 0, NULL, min, max, ImVec2(0, 80));
+
+		// Miss Offsets
+		ImGui::PlotHistogram("Miss Offset", missOffset[0].data(), missOffset[0].size(), 0, NULL, min, max, ImVec2(0, 80));
+
+		ImGui::Checkbox("Left AI", &aiLeft);
+
+		if (aiLeft)
+		{
+			ImGui::Checkbox("Rapid Self Learn", &selfLearn);
+			ImGui::Text("Left Weights:");
+			for (int i = 0; i < leftperceptron.featureVectorSize; i++)
+				ImGui::SliderFloat(Label(i, true), (leftperceptron.weights + i), -2.f, 2.f);
+			ImGui::SliderFloat("Lbias", &leftperceptron.bias, -2.f, 2.f);
+
+			// Hit Offsets
+			//ImGui::PlotHistogram("Hit Offset", hitOffset[1].data(), hitOffset[1].size(), 0, NULL, min, max, ImVec2(0, 80));
+
+			// Miss Offsets
+			ImGui::PlotHistogram("Miss Offset", missOffset[1].data(), missOffset[1].size(), 0, NULL, min, max, ImVec2(0, 80));
+		}
+		else
+			selfLearn = false;
+
+		if (selfLearn)
+		{
+			for (int i = 0; i < 100; i++)
+				Update(0.0167);
+
+			if (scores[0] > 9 || scores[1] > 9)
+			{
+				//breed time fam
+
+				//calc total score
+				int missAvg[2] = { 0,0 };
+				for (int i = 0; i < 2; i++)
+				{
+					float total = 0;
+					for (int j = 0; j < missOffset[i].size(); j++)
+					{
+						total += missOffset[i][j];
+					}
+					missAvg[i] = total / missOffset[i].size();
+				}
+
+				//calc winner
+				
+				int finalScore[2] = { 0,0 };
+				finalScore[0] = scores[0] * 1000 - missAvg[0] * 1000;
+				finalScore[1] = scores[1] * 1000 - missAvg[1] * 1000;
+
+				if (finalScore[1] > finalScore[0])
+				{
+					Perceptron p = perceptron.Crossover(perceptron, leftperceptron);
+					perceptron = p;
+				}
+				else
+					//leftperceptron.RandomizeValues();
+					leftperceptron.RandomizeValues(perceptron);
+
+
+				leftPaddle.score = 0;
+				rightPaddle.score = 0;
+				for (int i = 0; i < 2; i++)
+				{
+					scores[i] = 0;
+					hitOffset[i] = std::vector<float>();
+					missOffset[i] = std::vector<float>();
+				}
+			}
+
+		}
+
     }
     ImGui::End();
 }

@@ -34,7 +34,7 @@ Model coin; // A model for the coin quad
 // Shader
 GLuint basic_program;
 
-Car cars[2];
+Car cars[3];
 
 // Matrices
 glm::mat4 modelMatrix;
@@ -65,6 +65,19 @@ enum Turns
 
 std::vector<FuzzySet> turnSets(5);
 FuzzyGraph turnGraph("Turning Graph");
+
+enum RoadConditions
+{
+	VeryPoor = 0,
+	Poor,
+	Ok,
+	Good,
+	VeryGood
+};
+
+std::vector<FuzzySet> roadConditionSets(5);
+FuzzyGraph roadConditionGraph("Road Condition Graph");
+float roadCondition = 0.f;
 
 void DrawQuad(glm::vec2, glm::vec2, float);
 
@@ -110,21 +123,30 @@ void Initialize()
         SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB | SOIL_FLAG_COMPRESS_TO_DXT
     );
 
-    cars[1].texture = SOIL_load_OGL_texture
-    (
-        ASSETS"Images/Cars/car_black_1.png",
-        SOIL_LOAD_AUTO,
-        SOIL_CREATE_NEW_ID,
-        SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB | SOIL_FLAG_COMPRESS_TO_DXT
-    );
+	cars[1].texture = SOIL_load_OGL_texture
+	(
+		ASSETS"Images/Cars/car_black_1.png",
+		SOIL_LOAD_AUTO,
+		SOIL_CREATE_NEW_ID,
+		SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB | SOIL_FLAG_COMPRESS_TO_DXT
+	);
 
-    cars[1].carLocation = vec2(200.0f, 0.0f);
+	cars[2].texture = SOIL_load_OGL_texture
+	(
+		ASSETS"Images/Cars/car_red_5.png",
+		SOIL_LOAD_AUTO,
+		SOIL_CREATE_NEW_ID,
+		SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB | SOIL_FLAG_COMPRESS_TO_DXT
+	);
+
+	cars[1].carLocation = vec2(200.0f, 0.0f);
+	cars[2].carLocation = vec2(400.0f, 0.0f);
 
     glActiveTexture(GL_TEXTURE0);
     glUniform1i(glGetUniformLocation(basic_program, "mainTexture"), 0);
 
     distanceSets[0] = FuzzySet(NameID{ Distances::VeryClose, "Very Close" }, FuzzPoint{ 0.0f, Top },       FuzzPoint{ 50.0f, Bottom });
-    distanceSets[1] = FuzzySet(NameID{ Distances::Close,     "Close" },      FuzzPoint{ 0.0f, Bottom },    FuzzPoint{ 100.0f, Top }, FuzzPoint{ 200.0f, Bottom });
+    distanceSets[1] = FuzzySet(NameID{ Distances::Close,     "Close" },      FuzzPoint{ 50.0f, Bottom },    FuzzPoint{ 100.0f, Top }, FuzzPoint{ 200.0f, Bottom });
     distanceSets[2] = FuzzySet(NameID{ Distances::Far,       "Far" },        FuzzPoint{ 100.0f, Bottom },  FuzzPoint{ 300.0f, Top }, FuzzPoint{ 500.0f, Bottom });
     distanceSets[3] = FuzzySet(NameID{ Distances::VeryFar,   "Very Far" },   FuzzPoint{ 300.0f, Bottom },  FuzzPoint{ 500.0f, Top });
 
@@ -134,8 +156,15 @@ void Initialize()
     turnSets[3] = FuzzySet(NameID{ Turns::Right,     "Right" },      FuzzPoint{ 0.0f, Bottom },  FuzzPoint{ 0.5f, Top },   FuzzPoint{ 1.0f, Bottom });
     turnSets[4] = FuzzySet(NameID{ Turns::HardRight, "Hard Right" }, FuzzPoint{ 0.25f, Bottom }, FuzzPoint{ 1.0f, Top });
 
+	roadConditionSets[0] = FuzzySet(NameID{ RoadConditions::VeryPoor,	"Very Poor" },	FuzzPoint{ 0.25f, Top },	FuzzPoint{ 0.4f, Bottom });
+	roadConditionSets[1] = FuzzySet(NameID{ RoadConditions::Poor,		"Poor" },		FuzzPoint{ 0.3f, Bottom }, FuzzPoint{ 0.5f, Top },FuzzPoint{ 0.6f, Bottom });
+	roadConditionSets[2] = FuzzySet(NameID{ RoadConditions::Ok,			"Ok" },			FuzzPoint{ 0.5f, Bottom }, FuzzPoint{ 0.625f, Top }, FuzzPoint{ 0.75f, Bottom });
+	roadConditionSets[3] = FuzzySet(NameID{ RoadConditions::Good,		"Good" },		FuzzPoint{ 0.65f, Bottom },	FuzzPoint{ 0.75f, Top }, FuzzPoint{ 0.85f, Bottom });
+	roadConditionSets[4] = FuzzySet(NameID{ RoadConditions::VeryGood,	"Very Good" },	FuzzPoint{ 0.75f, Bottom }, FuzzPoint{ 1.0f, Top });
+
     distanceGraph.SetFuzzySets(distanceSets);
-    turnGraph.SetFuzzySets(turnSets);
+	turnGraph.SetFuzzySets(turnSets);
+	roadConditionGraph.SetFuzzySets(roadConditionSets);
 }
 
 void Update(float a_deltaTime)
@@ -148,23 +177,124 @@ void Update(float a_deltaTime)
     cars[0].Accelerate(glfwGetKey(window, GLFW_KEY_DOWN) ? -1.0f : glfwGetKey(window, GLFW_KEY_UP) ? 1.0f : 0.0f, a_deltaTime);
     if (glfwGetKey(window, GLFW_KEY_SPACE)) cars[0].Brake();
 
+	//ai 1
     {   // Fuzzy logic AI
         float distance = glm::distance(cars[0].carLocation, cars[1].carLocation); // in pixels
         float rAngle = dot( vec2(cos(cars[1].carHeading - radians(90.0f)), sin(cars[1].carHeading - radians(90.0f))), normalize(cars[0].carLocation - cars[1].carLocation));
         float fAngle = dot( vec2(cos(cars[1].carHeading), sin(cars[1].carHeading)), normalize(cars[0].carLocation - cars[1].carLocation));
         float turning = fAngle > 0.0f ? rAngle : 1.0f * sign(rAngle);
-    
+
+		std::vector<EvalName> fuzzyDist = distanceGraph.EvaluateGraph(distance);
+		std::vector<EvalName> fuzzyTurn = turnGraph.EvaluateGraph(turning);
+		std::vector<EvalName> fuzzyCond = roadConditionGraph.EvaluateGraph(roadCondition);
+
+		EvalName fuzzyMaxDist = fuzzyDist[0];
+		EvalName fuzzyMaxTurn = fuzzyTurn[0];
+		EvalName fuzzyMaxCond = fuzzyCond[0];
+
+		float dstMod = 0;
+		float cndMod = 0;
+		float trnMod = 0;
+
+		if (fuzzyMaxDist.nameID.id == Distances::VeryClose)
+		{
+			dstMod = 0;
+			cars[1].Brake();
+		}
+		else if (fuzzyMaxDist.nameID.id == Distances::Close)
+			dstMod = 0.1;
+		else if (fuzzyMaxDist.nameID.id == Distances::Far)
+			dstMod = 0.6;
+		else if (fuzzyMaxDist.nameID.id == Distances::VeryFar)
+			dstMod = 1;
+
+		if (fuzzyMaxCond.nameID.id == RoadConditions::VeryPoor)
+			cndMod = 0.7;
+		else if (fuzzyMaxCond.nameID.id == RoadConditions::Poor)
+			cndMod = 0.9;
+		else if (fuzzyMaxCond.nameID.id == RoadConditions::Ok)
+			cndMod = 1;
+		else if (fuzzyMaxCond.nameID.id == RoadConditions::Good)
+			cndMod = 1.2;
+		else if (fuzzyMaxCond.nameID.id == RoadConditions::VeryGood)
+			cndMod = 1.4;
+
+		if (fuzzyMaxTurn.nameID.id == Turns::HardLeft)
+			trnMod = 1;
+		else if (fuzzyMaxTurn.nameID.id == Turns::Left)
+			trnMod = 0.8;
+		else if (fuzzyMaxTurn.nameID.id == Turns::Straight)
+			trnMod = 0.5;
+		else if (fuzzyMaxTurn.nameID.id == Turns::Right)
+			trnMod = 0.8;
+		else if (fuzzyMaxTurn.nameID.id == Turns::HardRight)
+			trnMod = 1;
         // Dumb AI. Just move forward, and turn right slowly.
-        cars[1].Accelerate(1.0f, a_deltaTime);
-        cars[1].Turn(0.4f, a_deltaTime);
+        cars[1].Accelerate(1 * dstMod * cndMod, a_deltaTime);
+        cars[1].Turn(turning * trnMod, a_deltaTime);
     }
+	//ai 2 avoiding player + reckless driver
+	{   // Fuzzy logic AI
+		float distance = glm::distance(cars[1].carLocation, cars[2].carLocation); // in pixels
+		float rAngle = dot(vec2(cos(cars[2].carHeading - radians(90.0f)), sin(cars[2].carHeading - radians(90.0f))), normalize(cars[1].carLocation - cars[2].carLocation));
+		float fAngle = dot(vec2(cos(cars[2].carHeading), sin(cars[2].carHeading)), normalize(cars[1].carLocation - cars[2].carLocation));
+		float turning = fAngle > 0.0f ? rAngle : 1.0f * sign(rAngle);
+
+		std::vector<EvalName> fuzzyDist = distanceGraph.EvaluateGraph(distance);
+		std::vector<EvalName> fuzzyTurn = turnGraph.EvaluateGraph(turning);
+		std::vector<EvalName> fuzzyCond = roadConditionGraph.EvaluateGraph(roadCondition);
+
+		EvalName fuzzyMaxDist = fuzzyDist[0];
+		EvalName fuzzyMaxTurn = fuzzyTurn[0];
+		EvalName fuzzyMaxCond = fuzzyCond[0];
+
+		float dstMod = 0;
+		float cndMod = 0;
+		float trnMod = 0;
+
+		if (fuzzyMaxDist.nameID.id == Distances::VeryClose)
+			dstMod = 1;
+		else if (fuzzyMaxDist.nameID.id == Distances::Close)
+			dstMod = 1.3;
+		else if (fuzzyMaxDist.nameID.id == Distances::Far)
+			dstMod = 2;
+		else if (fuzzyMaxDist.nameID.id == Distances::VeryFar)
+			dstMod = 2.3;
+
+		if (fuzzyMaxCond.nameID.id == RoadConditions::VeryPoor)
+			cndMod = 1;
+		else if (fuzzyMaxCond.nameID.id == RoadConditions::Poor)
+			cndMod = 1.1;
+		else if (fuzzyMaxCond.nameID.id == RoadConditions::Ok)
+			cndMod = 1.3;
+		else if (fuzzyMaxCond.nameID.id == RoadConditions::Good)
+			cndMod = 1.5;
+		else if (fuzzyMaxCond.nameID.id == RoadConditions::VeryGood)
+			cndMod = 1.7;
+
+		if (fuzzyMaxTurn.nameID.id == Turns::HardLeft)
+			trnMod = 1;
+		else if (fuzzyMaxTurn.nameID.id == Turns::Left)
+			trnMod = 0.8;
+		else if (fuzzyMaxTurn.nameID.id == Turns::Straight)
+			trnMod = 0.5;
+		else if (fuzzyMaxTurn.nameID.id == Turns::Right)
+			trnMod = 0.8;
+		else if (fuzzyMaxTurn.nameID.id == Turns::HardRight)
+			trnMod = 1;
+		//printf("%s\n", fuzzyMaxCond.nameID.name.c_str());
+		cars[2].Accelerate(1 * dstMod * cndMod, a_deltaTime);
+		cars[2].Turn(turning * trnMod, a_deltaTime);
+	}
 
     // Update both cars
     cars[0].UpdateCar(a_deltaTime);
-    cars[1].UpdateCar(a_deltaTime);
+	cars[1].UpdateCar(a_deltaTime);
+	cars[2].UpdateCar(a_deltaTime);
 
     cars[0].ScreenWrap(width, height);
-    cars[1].ScreenWrap(width, height);
+	cars[1].ScreenWrap(width, height);
+	cars[2].ScreenWrap(width, height);
 }
 
 void Render()
@@ -178,9 +308,12 @@ void Render()
     glBindTexture(GL_TEXTURE_2D, cars[0].texture);
     DrawQuad(cars[0].carLocation, vec2(70.0f, 130.0f), cars[0].carHeading);
 
-    // Draw chase car
-    glBindTexture(GL_TEXTURE_2D, cars[1].texture);
-    DrawQuad(cars[1].carLocation, vec2(70.0f, 130.0f), cars[1].carHeading);
+	// Draw chase car
+	glBindTexture(GL_TEXTURE_2D, cars[1].texture);
+	DrawQuad(cars[1].carLocation, vec2(70.0f, 130.0f), cars[1].carHeading);
+	// Draw chase car
+	glBindTexture(GL_TEXTURE_2D, cars[2].texture);
+	DrawQuad(cars[2].carLocation, vec2(70.0f, 130.0f), cars[2].carHeading);
 
 
     glBindTexture(GL_TEXTURE_2D, GL_NONE);
@@ -189,8 +322,14 @@ void Render()
 
 void GUI()
 {
-    distanceGraph.DrawGraph(0.0f, 500.0f);
+	ImGui::Begin("Debug");
+	{
+		ImGui::SliderFloat("Road Condition", &roadCondition, 0.f, 1.f);
+	}
+	ImGui::End();
+    distanceGraph.DrawGraph(-100.0f, 500.0f);
     turnGraph.DrawGraph(-1.0f, 1.0f);
+	roadConditionGraph.DrawGraph(0.25f, 1.f);
 }
 
 void Cleanup()

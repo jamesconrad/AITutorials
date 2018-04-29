@@ -51,7 +51,7 @@ public:
 
     const static int ROWS = 6;
     const static int COLUMNS = 7;
-
+	
 private:
     char playingField[ROWS][COLUMNS];
 

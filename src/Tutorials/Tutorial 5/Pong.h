@@ -24,16 +24,24 @@ class PongBall
 public:
     enum BouncedOnSide
     {
-        LEFT = -1,
-        DIDNTBOUNCE = 0,
-        RIGHT = 1,
+        LEFT = 1,
+        DIDNTBOUNCE = 2,
+		SCORED = 3,
+        RIGHT = 0,
     };
+	struct MoveReturn
+	{
+		BouncedOnSide bos;
+		bool scored = false;
+		float hitOffset;
+		float missOffset;
+	};
 
 public:
     PongBall(glm::vec2 position, glm::vec2 direction);
 
     // This function has been modified to return an int if it bounces
-    BouncedOnSide Move(float deltaTime, PongPaddle &leftSide, PongPaddle &rightSide);
+    MoveReturn Move(float deltaTime, PongPaddle &leftSide, PongPaddle &rightSide);
 
     glm::vec2 position;
     glm::vec2 velocity;

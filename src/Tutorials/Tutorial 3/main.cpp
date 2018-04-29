@@ -11,6 +11,11 @@
 #include <stdio.h>  // Used for 'printf'
 #include <SOIL.h>
 
+#include<time.h>
+#include <string>
+#include <vector>
+#include <unordered_map>
+
 #include "Shaders.h"
 
 /*---------------------------- Variables ----------------------------*/
@@ -22,6 +27,7 @@ int height = 720;
 // Uniform locations
 GLuint mvp_loc, col_loc;
 
+
 // OpenGl stuff
 GLuint shader_program;
 GLuint quad_vbo; // vertex buffer object
@@ -32,6 +38,15 @@ glm::mat4 modelMatrix;
 glm::mat4 viewMatrix;
 glm::mat4 projectionMatrix;
 
+
+enum OPTION { ROCK, PAPER, SCISSORS, LIZARD, SPOCK };
+OPTION lastpick[2] = {ROCK, ROCK};
+OPTION playerLastPick = ROCK;
+std::string lastwin = "Draw";
+bool q1mode = false;
+int winnerLookup[5][5];
+int actionOrders[5][5];
+std::string msg = "";
 // Textures
 GLuint texture;
 
@@ -40,6 +55,42 @@ void DrawQuad(glm::vec2, glm::vec2, glm::vec3 = glm::vec3(1.0f));
 
 void Initialize()
 {
+	srand(time(NULL));
+
+	winnerLookup[ROCK][ROCK] = 0;
+	winnerLookup[ROCK][PAPER] = 2;
+	winnerLookup[ROCK][SCISSORS] = 1;
+	winnerLookup[ROCK][LIZARD] = 1;
+	winnerLookup[ROCK][SPOCK] = 2;
+
+	winnerLookup[PAPER][ROCK] = 1;
+	winnerLookup[PAPER][PAPER] = 0;
+	winnerLookup[PAPER][SCISSORS] = 2;
+	winnerLookup[PAPER][LIZARD] = 2;
+	winnerLookup[PAPER][SPOCK] = 1;
+
+	winnerLookup[SCISSORS][ROCK] = 2;
+	winnerLookup[SCISSORS][PAPER] = 1;
+	winnerLookup[SCISSORS][SCISSORS] = 0;
+	winnerLookup[SCISSORS][LIZARD] = 1;
+	winnerLookup[SCISSORS][SPOCK] = 2;
+
+	winnerLookup[LIZARD][ROCK] = 2;
+	winnerLookup[LIZARD][PAPER] = 1;
+	winnerLookup[LIZARD][SCISSORS] = 2;
+	winnerLookup[LIZARD][LIZARD] = 0;
+	winnerLookup[LIZARD][SPOCK] = 1;
+
+	winnerLookup[SPOCK][ROCK] = 1;
+	winnerLookup[SPOCK][PAPER] = 2;
+	winnerLookup[SPOCK][SCISSORS] = 1;
+	winnerLookup[SPOCK][LIZARD] = 2;
+	winnerLookup[SPOCK][SPOCK] = 0;
+
+	for (int i = 0; i < 5; i++)
+		for (int j = 0; j < 5; j++)
+			actionOrders[i][j] = 0;
+
     // Create a shader for the lab
     GLuint vs = buildShader(GL_VERTEX_SHADER, ASSETS"primitive.vs");
     GLuint fs = buildShader(GL_FRAGMENT_SHADER, ASSETS"primitive.fs");
@@ -99,9 +150,88 @@ void Render()
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture);
 
-    DrawQuad(glm::vec2(0.0f), glm::vec2(100.0f, 100.0f));
+    //DrawQuad(glm::vec2(0.0f), glm::vec2(100.0f, 100.0f));
 
     glUseProgram(GL_NONE);
+}
+
+void Winner()
+{
+	switch (winnerLookup[lastpick[0]][lastpick[1]])
+	{
+	case 0: lastwin = "Draw"; return;
+	case 1: lastwin = "P1"; return;
+	case 2: lastwin = "AI"; return;
+	}
+}
+
+void Select(OPTION a)
+{
+	if (q1mode)
+	{
+		OPTION ai = (OPTION)(rand() % 5);
+		lastpick[0] = a;
+		lastpick[1] = ai;
+		return;
+	}
+	msg = "";
+	int total = 0;
+	float probs[5] = { 0,0,0,0,0 };
+	OPTION next = ROCK;
+	for (int i = 0; i < 5; i++)
+		total += actionOrders[playerLastPick][i];
+	if (total != 0)
+	{
+		for (int i = 0; i < 5; i++)
+		{
+			probs[i] = actionOrders[playerLastPick][i] / total;
+			if (probs[i] > probs[next]) next = (OPTION)i;
+			//msg.append(probs[i]);
+			
+		}
+		
+	}
+	else
+	{
+		OPTION ai = (OPTION)(rand() % 5);
+		lastpick[0] = a;
+		lastpick[1] = ai;
+		msg = "Reverting to random to avoid divide by 0.";
+
+		actionOrders[playerLastPick][a]++;
+		playerLastPick = a;
+		return;
+	}
+	
+	int index = 0;
+	OPTION validChoices[2];
+	for (int i = 0; i < 5; i++)
+	{
+		if (winnerLookup[next][i] == 2)
+		{
+			validChoices[index] = (OPTION)i;
+			index++;
+		}
+	}
+
+	lastpick[0] = a;
+	lastpick[1] = validChoices[rand() % 2];
+
+	actionOrders[playerLastPick][a]++;
+	playerLastPick = a;
+}
+
+char* OptToStr(OPTION a)
+{
+	switch (a)
+	{
+	case ROCK: return "Rock";
+	case PAPER: return "Paper";
+	case SCISSORS: return "Scissors";
+	case LIZARD: return "Liazard";
+	case SPOCK: return "Spock";
+	default: return "??";
+	}
 }
 
 void GUI()
@@ -110,6 +240,15 @@ void GUI()
     {
         // Show some basic stats in the settings window 
         ImGui::Text("%.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+		ImGui::Checkbox("Q1?", &q1mode);
+		if (ImGui::Button("Rock"))			Select(OPTION::ROCK);
+		else if (ImGui::Button("Paper"))	Select(OPTION::PAPER);
+		else if (ImGui::Button("Scissors"))	Select(OPTION::SCISSORS);
+		else if (ImGui::Button("Lizard"))	Select(OPTION::LIZARD);
+		else if (ImGui::Button("Spock"))	Select(OPTION::SPOCK);
+		Winner();
+		ImGui::Text("P1: %s\nAI: %s\nWinner: %s\n\n", OptToStr(lastpick[0]), OptToStr(lastpick[1]), lastwin.c_str());
+		ImGui::Text(msg.c_str());
     }
     ImGui::End();
 }

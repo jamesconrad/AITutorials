@@ -53,9 +53,13 @@ Perceptron Perceptron::Crossover(const Perceptron& parent1, const Perceptron& pa
 	for (unsigned int i = 0; i < result.featureVectorSize; ++i)
 	{
 		result.weights[i] = (parent1.weights[i] + parent2.weights[i]) / 2.0f;
+		if (result.weights[i] > 2.f)	result.weights[i] = 2.f;
+		else if (result.weights[i] < -2.f) result.weights[i] = -2.f;
 	}
 
 	result.bias = (parent1.bias + parent2.bias) / 2.0f;
+	if (result.bias > 2.f) result.bias = 2.f;
+	else if (result.bias < -2.f) result.bias = -2.f;
 
 	return result;
 }
@@ -89,4 +93,19 @@ void Perceptron::RandomizeValues()
 	}
 
 	bias = RandomRange(-2.0f, 2.0f);
+}
+
+void Perceptron::RandomizeValues(Perceptron p)
+{
+	for (unsigned int i = 0; i < featureVectorSize; ++i)
+	{
+		weights[i] = RandomRange(-1.25f, 1.25f) * p.weights[i]; // This range of [-2, 2] is arbitrary.
+		if (weights[i] > 2.f)	weights[i] = 2.f;
+		else if (weights[i] < -2.f) weights[i] = -2.f;
+
+	}
+
+	bias = RandomRange(-1.25f, 1.25f) * p.bias;
+	if (bias > 2.f) bias = 2.f;
+	else if (bias < -2.f) bias = -2.f;
 }

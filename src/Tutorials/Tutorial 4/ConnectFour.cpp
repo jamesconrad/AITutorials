@@ -193,7 +193,10 @@ int ConnectFourBoard::SimpleScoring()
     {
         for (int column = 0; column < COLUMNS - 3; column++) 
         {
-            // -------------  This one is almost finished
+			int score = ScorePosition(row, column, 0, 1);
+			if (score == MAX_SCORE) return  MAX_SCORE;
+			if (score == -MAX_SCORE) return -MAX_SCORE;
+			horizontal_points += score;
         }
     }
 
@@ -201,14 +204,22 @@ int ConnectFourBoard::SimpleScoring()
     //
     // Possible situation
     //  0  1  2  3  4  5  6
-    // [x][ ][ ][ ][ ][ ][ ] 0
-    // [ ][x][ ][ ][ ][ ][ ] 1
-    // [ ][ ][x][ ][ ][ ][ ] 2
-    // [ ][ ][ ][x][ ][ ][ ] 3
-    // [ ][ ][ ][ ][ ][ ][ ] 4
-    // [ ][ ][ ][ ][ ][ ][ ] 5
-
-    // -------------  These last two are completely missing
+    // [x][ ][ ][x][ ][ ][ ] 0
+    // [ ][x][ ][ ][x][ ][ ] 1
+    // [x][ ][x][ ][ ][x][ ] 2
+    // [ ][x][ ][x][ ][ ][x] 3
+    // [ ][ ][x][ ][ ][ ][ ] 4
+    // [ ][ ][ ][x][ ][ ][ ] 5
+	for (int row = 0; row < 4; row++)
+	{
+		for (int column = 0; column < 3; column++)
+		{
+			int score = ScorePosition(row, column, 1, 1);
+			if (score == MAX_SCORE) return  MAX_SCORE;
+			if (score == -MAX_SCORE) return -MAX_SCORE;
+			diagonal_points_1 += score;
+		}
+	}
 
     // Diagonal points 2 (right-bottom)
     //
@@ -216,12 +227,20 @@ int ConnectFourBoard::SimpleScoring()
     //  0  1  2  3  4  5  6
     // [ ][ ][ ][x][ ][ ][ ] 0
     // [ ][ ][x][ ][ ][ ][ ] 1
-    // [ ][x][ ][ ][ ][ ][ ] 2
-    // [x][ ][ ][ ][ ][ ][ ] 3
-    // [ ][ ][ ][ ][ ][ ][ ] 4
-    // [ ][ ][ ][ ][ ][ ][ ] 5
-
-    // -------------  But don't worry, I believe in you
+    // [ ][x][ ][ ][ ][ ][x] 2
+    // [x][ ][ ][ ][ ][x][ ] 3
+    // [ ][ ][ ][ ][x][ ][ ] 4
+    // [ ][ ][ ][x][ ][ ][ ] 5
+	for (int row = 0; row < 3; row++)
+	{
+		for (int column = 3; column < COLUMNS; column++)
+		{
+			int score = ScorePosition(row, column, 1, -1);
+			if (score == MAX_SCORE) return  MAX_SCORE;
+			if (score == -MAX_SCORE) return -MAX_SCORE;
+			diagonal_points_2 += score;
+		}
+	}
 
     return vertical_points + horizontal_points + diagonal_points_1 + diagonal_points_2;
 }

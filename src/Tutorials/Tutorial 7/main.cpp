@@ -1,7 +1,9 @@
+#define GLM_ENABLE_EXPERIMENTAL
 #include <GL/gl3w.h>
 #include <GLFW/glfw3.h> // GLFW helper library
 #include <GLM/glm.hpp>
 #include <GLM/gtc/matrix_transform.hpp> // for glm::ortho
+#include <GLM/gtx/vector_angle.hpp>
 using namespace glm;
 
 // IMGUI
@@ -40,6 +42,7 @@ Model * currentlyBeingDrawn = nullptr;
 std::vector<vec3> currentLinePoints;
 float lineWidth = 3.0f;
 const float linePrecision = 10.0f; // Smaller the better
+glm::vec2 prevPoint = glm::vec2(0, 0);
 
 // AI Variables
 const bool USE_CUSTOM_PERCEPTRON_VALUES = true; /**  EDIT ME!!  **/
@@ -52,8 +55,12 @@ enum Features
 	DirectionAccumulationY,
     EndPointX,
     EndPointY,
-    MousePositionX,
-    MousePositionY,
+	OffsetX,
+	OffsetY,
+	NumModels,
+	AverageAngle,
+    //MousePositionX,
+    //MousePositionY,
 	COUNT
 };
 
@@ -61,12 +68,15 @@ enum Outputs
 {
 	NONE,
 	Circle,
-	Cross
+	Cross,
+	Triangle
 };
 
 Perceptron perceptron(Features::COUNT);
+Perceptron triangleperceptron(Features::COUNT);
 Outputs result = Outputs::NONE;
 float perceptronOutput = 0.0f;
+float triangleOutput = 0.0f;
 
 // Feature vector stuff
 vec2 directionAccumulation = vec2(0.0f, 0.0f);
@@ -75,11 +85,31 @@ vec2 minBounds = vec2(0.0f, 0.0f);
 vec2 startPoint = vec2(0.0f, 0.0f);
 vec2 endPoint = vec2(0.0f, 0.0f);
 vec2 mousePosition = vec2(0.0f, 0.0f);
+float numPoints = 0.f;
+int penRelease = 0;
 
 // Functions
 void DrawQuad(glm::vec2, glm::vec2, glm::vec3 = glm::vec3(1.0f));
 void Cleanup();
 void CleanupLines();
+
+char* FeatureName(Features f)
+{
+	switch (f)
+	{
+	case Features::DirectionAccumulationLength: return "DirAccumLen";
+	case Features::DirectionAccumulationX : return "DirAccumX";
+	case Features::DirectionAccumulationY : return "DirAccumY";
+	case Features::EndPointX : return "EndX";
+	case Features::EndPointY : return "EndY";
+	case Features::NumModels : return "NumLines";
+	case Features::StartPointX : return "StartX";
+	case Features::StartPointY : return "StartY";
+	case Features::OffsetX : return "OffsetX";
+	case Features::OffsetY : return "OffsetY";
+	case Features::AverageAngle: return "AvgAngle";
+	}
+}
 
 void Initialize()
 {
@@ -87,23 +117,42 @@ void Initialize()
 	{
 		float weightVector[Features::COUNT] = { 0.0f };
 
-		weightVector[Features::DirectionAccumulationLength] = 1.0f;
-		weightVector[Features::DirectionAccumulationX] = 1.0f;
-		weightVector[Features::DirectionAccumulationY] = 1.0f;
-        weightVector[Features::StartPointX] = 1.0f;
-        weightVector[Features::StartPointY] = 1.0f;
-        weightVector[Features::EndPointX] = 1.0f;
-        weightVector[Features::EndPointY] = 1.0f;
-        weightVector[Features::MousePositionX] = 1.0f;
-        weightVector[Features::MousePositionY] = 1.0f;
+		weightVector[Features::DirectionAccumulationLength] = -1.0f;
+		weightVector[Features::DirectionAccumulationX] = -1.0f;
+		weightVector[Features::DirectionAccumulationY] = -1.0f;
+        weightVector[Features::StartPointX] = 0.0f;
+        weightVector[Features::StartPointY] = 0.0f;
+        weightVector[Features::EndPointX] = 0.0f;
+        weightVector[Features::EndPointY] = 0.0f;
+		weightVector[Features::NumModels] = 0.0f;
+		weightVector[Features::OffsetX] = -1.0f;
+		weightVector[Features::OffsetY] = -1.0f;
+		weightVector[Features::AverageAngle] = 0.0f;
+        //weightVector[Features::MousePositionX] = 1.0f;
+        //weightVector[Features::MousePositionY] = 1.0f;
 		
         perceptron.bias = 0.0f;
 
 		perceptron.SetWeights(weightVector);
+
+		weightVector[Features::DirectionAccumulationLength] = 0.0f;
+		weightVector[Features::DirectionAccumulationX] = 1.0f;
+		weightVector[Features::DirectionAccumulationY] = 0.0f;
+		weightVector[Features::StartPointX] = 0.0f;
+		weightVector[Features::StartPointY] = 0.0f;
+		weightVector[Features::EndPointX] = 0.0f;
+		weightVector[Features::EndPointY] = 0.0f;
+		weightVector[Features::NumModels] = -1.0f;
+		weightVector[Features::OffsetX] = 0.0f;
+		weightVector[Features::OffsetY] = 0.0f;
+		weightVector[Features::AverageAngle] = 0.0f;
+
+		triangleperceptron.SetWeights(weightVector);
 	}
 	else
 	{
 		perceptron.RandomizeValues();
+		triangleperceptron.RandomizeValues();
 	}
 
     {   // Create a shader for the quad
@@ -225,6 +274,7 @@ void Update(float a_deltaTime)
             currentLinePoints.clear();
 
 			mouseDownLeft = false;
+			penRelease++;
         }
     }
 
@@ -255,21 +305,49 @@ void Update(float a_deltaTime)
         featureVector[Features::StartPointX] = startPoint.x;
         featureVector[Features::StartPointY] = startPoint.y;
         featureVector[Features::EndPointX] = endPoint.x;
-        featureVector[Features::EndPointY] = endPoint.y;
-        featureVector[Features::MousePositionX] = mousePosition.x;
-        featureVector[Features::MousePositionY] = mousePosition.y;
+		featureVector[Features::EndPointY] = endPoint.y;
+		featureVector[Features::NumModels] = penRelease;
+		featureVector[Features::OffsetX] = endPoint.x - startPoint.x;
+		featureVector[Features::OffsetY] = endPoint.y - startPoint.y;
+		//vec3 prev = currentLinePoints[0];
+		//float totalAngle = 0;
+		//int count = 0;
+		//for (int i = 1; i < currentLinePoints.size(); i++)
+		//{
+		//	float a = angle(glm::normalize(prev), glm::normalize(currentLinePoints[i]));
+		//	totalAngle += a;
+		//	prev = currentLinePoints[i];
+		//	count++;
+		//}
+		//float avgA = totalAngle / count;
+		//prev = currentLinePoints[0];
+		//count = 0;
+		//totalAngle = 0;
+		//for (int i = 1; i < currentLinePoints.size(); i++)
+		//{
+		//	float a = angle(glm::normalize(prev), glm::normalize(currentLinePoints[i])) * 57.2958;
+		//
+		//	totalAngle += a - avgA;
+		//
+		//	prev = currentLinePoints[i];
+		//	count++;
+		//}
+		//
+		//featureVector[Features::AverageAngle] = totalAngle/count;
+        //featureVector[Features::MousePositionX] = mousePosition.x;
+        //featureVector[Features::MousePositionY] = mousePosition.y;
 
-
+		
 		perceptronOutput = perceptron.Evaluate(featureVector);
+		triangleOutput = triangleperceptron.Evaluate(featureVector);
 
-		if (perceptronOutput > 0.5)
-		{
-			result = Cross;
-		}
-		else
-		{
+		if (perceptronOutput >= triangleOutput && perceptronOutput > 0.5)
 			result = Circle;
-		}
+		else if (triangleOutput > perceptronOutput && triangleOutput > 0.5)
+			result = Triangle;
+		else
+			result = Cross;
+		
 
 		CleanupLines();
 	}
@@ -322,10 +400,11 @@ void Render()
 
 void GUI()
 {
-    ImGui::Begin("Settings", 0, ImVec2(100, 50), 0.4f);
+	ImGui::Begin("Settings", 0, ImVec2(0, 0), 0.4f, ImGuiWindowFlags_AlwaysAutoResize);
     {
         // Show some basic stats in the settings window 
-        ImGui::Text("Perceptron output = %.3f", perceptronOutput);
+		ImGui::Text("Circle output = %.3f", perceptronOutput);
+		ImGui::Text("Smiley output = %.3f", triangleOutput);
 
 		if (result == Outputs::Circle)
 		{
@@ -337,9 +416,41 @@ void GUI()
 			ImGui::Spacing();
 			ImGui::Text("Cross!");
 		}
+		else if (result == Outputs::Triangle)
+		{
+			ImGui::Spacing();
+			ImGui::Text("Smiley!");
+		}
 
         ImGui::Spacing();
         ImGui::SliderFloat("Line Width", &lineWidth, 1.0f, 100.0f);
+
+		ImGui::Spacing();
+		ImGui::Text("Circle Perceptron Weights:");
+		for (int i = 0; i < Features::COUNT; i++)
+		{
+			char* str = FeatureName((Features)i);
+			int l = strlen(str);
+			char* fin = (char*)malloc(l + 1);
+			memcpy(fin + 1, str, l);
+			fin[0] = 'C';
+			ImGui::SliderFloat(fin, &perceptron.weights[i], -1, 1);
+			free(fin);
+		}
+		ImGui::SliderFloat("CBias", &perceptron.bias, -1, 1);
+		ImGui::Spacing();
+		ImGui::Text("Smiley Perceptron Weights:");
+		for (int i = 0; i < Features::COUNT; i++)
+		{
+			char* str = FeatureName((Features)i);
+			int l = strlen(str);
+			char* fin = (char*)malloc(l + 1);
+			memcpy(fin + 1, str, l);
+			fin[0] = 'T';
+			ImGui::SliderFloat(fin, &triangleperceptron.weights[i], -1, 1);
+			free(fin);
+		}
+		ImGui::SliderFloat("TBias", &triangleperceptron.bias, -1, 1);
     }
     ImGui::End();
 }
@@ -363,7 +474,7 @@ void CleanupLines()
 		glDeleteBuffers(1, &line.vbo);
 		glDeleteVertexArrays(1, &line.vao);
 	}
-
+	penRelease = 0;
 	lineModels.clear();
 	currentLinePoints.clear();
 	directionAccumulation = vec2(0.0f, 0.0f);

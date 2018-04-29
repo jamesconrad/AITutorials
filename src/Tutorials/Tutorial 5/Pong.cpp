@@ -6,9 +6,10 @@ PongBall::PongBall(glm::vec2 position, glm::vec2 direction)
     velocity = glm::normalize(direction) * maxSpeed;
 }
 
-PongBall::BouncedOnSide PongBall::Move(float deltaTime, PongPaddle &leftSide, PongPaddle &rightSide)
+PongBall::MoveReturn PongBall::Move(float deltaTime, PongPaddle &leftSide, PongPaddle &rightSide)
 {
-    BouncedOnSide returnValue = DIDNTBOUNCE;
+    MoveReturn returnValue;
+	returnValue.bos = DIDNTBOUNCE;
 
     const float wallPosition = 350.0f;
     const float halfWallWidth = 5.0f;
@@ -42,7 +43,8 @@ PongBall::BouncedOnSide PongBall::Move(float deltaTime, PongPaddle &leftSide, Po
 
             velocity = glm::normalize(velocity) * maxSpeed;    // Normalize
         }
-        returnValue = RIGHT;
+        returnValue.bos = RIGHT;
+		returnValue.hitOffset = position.y - rightSide.yPos;
     }
 
     if (position.x < -paddlePosition + halfPaddleWidth) // This means we're on the left side
@@ -57,18 +59,27 @@ PongBall::BouncedOnSide PongBall::Move(float deltaTime, PongPaddle &leftSide, Po
 
             velocity = glm::normalize(velocity)* maxSpeed;    // Normalize
         }
-        returnValue = LEFT;
+        returnValue.bos = LEFT;
+		returnValue.hitOffset = position.y - leftSide.yPos;
     }
 
     // Count score
     if (position.x > 640.0f) // Means the left side scored a point
     {
+		returnValue.scored = true;
+		returnValue.bos = LEFT;
+		returnValue.missOffset = position.y - rightSide.yPos;
+
         position = glm::vec2(-620.0f, leftSide.yPos);
         velocity.x = -velocity.x;
         leftSide.score++;
     }
     if (position.x < -640.0f) // Means the right side scored a point
     {
+		returnValue.scored = true;
+		returnValue.bos = RIGHT;
+		returnValue.missOffset = position.y - leftSide.yPos;
+
         position = glm::vec2(620.0f, rightSide.yPos);
         velocity.x = -velocity.x;
         rightSide.score++;

@@ -1,6 +1,8 @@
 #include "Pacman.h"
 #include <math.h>
 
+#define PELLET_DURATION 30.f
+
 const static float w = 32.0f;
 const static float h = 32.0f;
 
@@ -14,6 +16,12 @@ Map::Map(GLFWwindow* _window)
     window = _window;
 
     Reset();
+}
+
+void Map::SetState(Ghost::State s)
+{
+	for (int i = 0; i < 4; i++)
+		ghosts[i]->ChangeState(s);
 }
 
 Map::~Map()
@@ -152,12 +160,46 @@ void Ghost::DrawGhost(drawquad_function a_drawQuad)
         a_drawQuad(position, glm::vec2(24), glm::vec3(245, 179, 82) / 255.0f, 0);
 }
 
+void Ghost::ChangeState(State s)
+{
+	prevState = currentState;
+	currentState = s;
+	stageTimer = 0.f;
+}
+
 void Ghost::Update(float a_deltaTime)
 {
     mixPercent += a_deltaTime * speed;
-
+	stageTimer += a_deltaTime;
     {
         // You can make state changes here
+		if (timingPhase == 1 || timingPhase == 2)
+		{
+			//7/20
+			if (currentState == State::SCATTER && stageTimer >= 7.f)
+				ChangeState(State::CHASE);
+			else if (currentState == State::CHASE && stageTimer >= 20.f)
+				ChangeState(State::SCATTER);
+		}
+		else if (timingPhase == 3)
+		{
+			//5/20
+			if (currentState == State::SCATTER && stageTimer >= 5.f)
+				ChangeState(State::CHASE);
+			else if (currentState == State::CHASE && stageTimer >= 20.f)
+				ChangeState(State::SCATTER);
+		}
+		else if (timingPhase == 4)
+		{
+			//5/inf
+			if (currentState == State::SCATTER && stageTimer >= 5.f)
+				ChangeState(State::CHASE);
+		}
+		else if (currentState == State::FRIGHTENED && stageTimer >= PELLET_DURATION)
+		{
+			ChangeState(prevState);
+			timingPhase += 1;
+		}
     }
 
     if (mixPercent >= 1.0f)
@@ -201,20 +243,77 @@ void Ghost::MoveTowardsTarget(float a_deltaTime)
 glm::vec2 Ghost::MakeDecision(std::vector<glm::vec2> centers)
 {
     switch (currentState)
-    {
-    case State::SCATTER:
-    {
-        // Move toward the fixed point (see tutorial doc)
-    } break;
-    case State::CHASE:
-    {
-        // Based on a distance to the player
-    } break;
-    case State::FRIGHTENED:
-    {
-        // Random decision
-    } break;
-    }
+	{
+	case State::SCATTER:
+	{
+		// Move toward the fixed point (see tutorial doc)
+		glm::vec2 home;
+		switch (name)
+		{
+		case Ghost::PINKY:	home = glm::vec2(-368.0f, 400.0f); break;
+		case Ghost::BLINKY:	home = glm::vec2(368.0f, 400.0f); break;
+		case Ghost::INKY:	home = glm::vec2(368.0f, -400.0f); break;
+		case Ghost::CLYDE:	home = glm::vec2(-368.0f, -400.0f); break;
+		}
+
+		glm::vec2 shortestDist = centers[0];
+
+		for (int i = 0; i < centers.size(); i++)
+		{
+			float currShortest = glm::length(shortestDist - home);
+			float dist = glm::length(centers[i] - home);
+
+			if (dist < currShortest)
+			{
+				shortestDist = centers[i];
+			}
+		}
+		return shortestDist;
+		
+	} break;
+	case State::CHASE:
+	{
+		// Based on a distance to the player
+		//glm::vec2 targetPos = glm::mix(pacmanPosition, glm::vec2(368.0f, 400.0f), factor);
+
+		glm::vec2 shortestDist = centers[0];
+		glm::vec2 targetPosition = map->player->position;
+
+		switch (name)
+		{
+		case Ghost::PINKY: targetPosition = map->player->targetTile; break;
+		case Ghost::BLINKY: targetPosition = map->player->position; break;
+		case Ghost::INKY: targetPosition = map->player->position; break;
+		case Ghost::CLYDE:
+			float dst = glm::length(position - map->player->position);
+			if (dst > 32 * 8)
+				targetPosition = map->player->position;
+			else
+				targetPosition = glm::vec2(-368.0f, -400.0f);
+			break;
+		}
+
+		for (int i = 0; i < centers.size(); i++)
+		{
+			float currShortest = glm::length(shortestDist - targetPosition);
+			float dist = glm::length(centers[i] - targetPosition);
+
+			if (dist < currShortest)
+			{
+				shortestDist = centers[i];
+			}
+
+		}
+		return shortestDist;
+
+
+	} break;
+	case State::FRIGHTENED:
+	{
+		// Random decision
+		return centers[rand() % centers.size()];
+	} break;
+	}
 
     return centers[0]; // This means the ghosts will eventually get stuck in an infinite loop
 }
@@ -237,7 +336,7 @@ void PacMan::DrawPacMan(drawquad_function a_drawQuad)
 void PacMan::Update(float a_deltaTime)
 {
     mixPercent += a_deltaTime * speed;
-
+	
     if (mixPercent >= 1.0f)
     {
         position = targetTile;

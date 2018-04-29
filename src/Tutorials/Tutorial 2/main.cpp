@@ -113,8 +113,34 @@ void GUI()
 
         if (ImGui::Button("Eat Pellet"))
         {
-            // Set all ghosts to frightened state for a specific amount of time
+			mainLevel->SetState(Ghost::State::FRIGHTENED);
         }
+
+		ImGui::Text("Name: state timer phase");
+		for (int i = 0; i < 4; i++)
+		{
+			Ghost* g = mainLevel->ghosts[i];
+			if (i == Ghost::Name::BLINKY)
+			{
+				ImGui::TextColored(ImVec4(235 / 255.f, 27 / 255.f, 36 / 255.f, 1), "Blinky"); ImGui::SameLine();
+				ImGui::Text(": %s, %.3f, %i", g->currentState == Ghost::State::CHASE ? "chase" : (g->currentState == Ghost::State::SCATTER ? "scatter" : "frightened"), g->stageTimer, g->timingPhase);
+			}
+			else if (i == Ghost::Name::PINKY)
+			{
+				ImGui::TextColored(ImVec4(251 / 255.f, 181 / 255.f, 250 / 255.f, 1), "Pinky "); ImGui::SameLine();
+				ImGui::Text(": %s, %.3f, %i", g->currentState == Ghost::State::CHASE ? "chase" : (g->currentState == Ghost::State::SCATTER ? "scatter" : "frightened"), g->stageTimer, g->timingPhase);
+			}
+			else if (i == Ghost::Name::INKY)
+			{
+				ImGui::TextColored(ImVec4(17 / 255.f, 255 / 255.f, 254 / 255.f, 1), "Inky  "); ImGui::SameLine();
+				ImGui::Text(": %s, %.3f, %i", g->currentState == Ghost::State::CHASE ? "chase" : (g->currentState == Ghost::State::SCATTER ? "scatter" : "frightened"), g->stageTimer, g->timingPhase);
+			}
+			else if (i == Ghost::Name::CLYDE)
+			{
+				ImGui::TextColored(ImVec4(245 / 255.f, 179 / 255.f, 82 / 255.f, 1), "Clyde "); ImGui::SameLine();
+				ImGui::Text(": %s, %.3f, %i", g->currentState == Ghost::State::CHASE ? "chase" : (g->currentState == Ghost::State::SCATTER ? "scatter" : "frightened"), g->stageTimer, g->timingPhase);
+			}
+		}
     }
     ImGui::End();
 }

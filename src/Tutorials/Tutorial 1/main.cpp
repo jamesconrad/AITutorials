@@ -39,6 +39,85 @@ PongBall ball(glm::vec2(0.0f), glm::vec2(1.0f, 1.0f));
 // Functions
 void DrawQuad(glm::vec2, glm::vec2, glm::vec3 = glm::vec3(1.0f));
 
+
+
+//------------------------AI STUFF
+
+int ai_mode[2] = { 0,0 }; // 0 = off
+int aimode0 = 0;
+int aimode1 = 0;
+float ai_delay[2] = { 0,0 };
+float ai_reactiondelay = 0.f;
+float ai_accuracy = 1.f;
+float finalY = 0;
+float timeToGoal = 0.f;
+float timeToWall = 0.f;
+float lastDirX = -1;
+
+
+void DoAI(int ai, float dTime)
+{
+	/*  When creating the Pong AI, it needs to follow the same rules as the player.
+	Instead of explicitly setting the y position to follow the ball, use AI logic, and
+	PongPaddle::MoveUp() and PongPaddle::MoveDown() functions to control the paddle. */
+
+	PongPaddle *paddle = ai == 0 ? &leftPaddle : &rightPaddle;
+
+	if (ai_mode[ai] == 1)
+	{
+		if (ball.position.y - ball.velocity.y * ai_reactiondelay > paddle->yPos + 360 * (1-ai_accuracy))
+			paddle->MoveUp(dTime);
+		else if (ball.position.y - ball.velocity.y * ai_reactiondelay < paddle->yPos - 360 * (1-ai_accuracy))
+			paddle->MoveDown(dTime);
+	}
+	else if (ai_mode[ai] == 2)
+	{
+		//pass
+	}
+	else if (ai_mode[ai] == 3)
+	{
+		bool goal = false;
+		glm::vec2 theoryP = ball.position;
+		glm::vec2 theoryV = ball.velocity;
+
+		while (!goal)
+		{
+			float wallOffset = theoryV.x > 0 ? 620 - theoryP.x : abs(theoryP.x - (-620)); // float to offset wall
+			float offset = theoryV.y > 0 ? 320 - theoryP.y : theoryP.y - (-320); //float to opposit ceil
+			timeToWall = abs(offset / theoryV.y); //calculate time at wall hit
+			timeToGoal = abs(wallOffset / theoryV.x); //calculate when we score
+			if (timeToWall < 0.001f)
+				timeToWall = 10.f;
+
+			if (timeToGoal < timeToWall)
+			{
+				finalY = theoryP.y + theoryV.y * timeToGoal;
+				goal = true;
+			}
+			else
+			{
+				theoryP = theoryP + theoryV * timeToWall;
+				theoryV = -theoryV;
+			}
+			
+		}
+		if (lastDirX != ball.velocity.x)
+			ai_delay[ai] = 0;
+		ai_delay[ai] += dTime;
+
+		if (ai_delay[ai] > ai_reactiondelay)
+		{
+			if (finalY > paddle->yPos + 360 * (1 - ai_accuracy))
+				paddle->MoveUp(dTime);
+			else if (finalY < paddle->yPos - 360 * (1 - ai_accuracy))
+				paddle->MoveDown(dTime);
+		}
+	}
+
+}
+
+//------------------------END AI STUFF
+
 void Initialize()
 {
     // Create a shader for the lab
@@ -82,22 +161,38 @@ void Update(float a_deltaTime)
     if (glfwGetKey(window, GLFW_KEY_ESCAPE))
         glfwSetWindowShouldClose(window, true);
 
+	ai_mode[0] = aimode0 == 2 ? 3 : aimode0;
+	ai_mode[1] = aimode1 == 2 ? 3 : aimode1;
+
     /*  When creating the Pong AI, it needs to follow the same rules as the player.
     Instead of explicitly setting the y position to follow the ball, use AI logic, and
     PongPaddle::MoveUp() and PongPaddle::MoveDown() functions to control the paddle. */
+	
+
 
     // Left side player
-    if (glfwGetKey(window, GLFW_KEY_W))
-        leftPaddle.MoveUp(a_deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_S))
-        leftPaddle.MoveDown(a_deltaTime);
+	if (ai_mode[0] == 0)
+	{
+		if (glfwGetKey(window, GLFW_KEY_W))
+			leftPaddle.MoveUp(a_deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_S))
+			leftPaddle.MoveDown(a_deltaTime);
+	}
+	else
+		DoAI(0, a_deltaTime);
 
     // Right side player
-    if (glfwGetKey(window, GLFW_KEY_UP))
-        rightPaddle.MoveUp(a_deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_DOWN))
-        rightPaddle.MoveDown(a_deltaTime);
+	if (ai_mode[1] == 0)
+	{
+		if (glfwGetKey(window, GLFW_KEY_UP))
+			rightPaddle.MoveUp(a_deltaTime);
+		if (glfwGetKey(window, GLFW_KEY_DOWN))
+			rightPaddle.MoveDown(a_deltaTime);
+	}
+	else
+		DoAI(1, a_deltaTime);
 
+	lastDirX = ball.velocity.x;
     // You can look in this ball class to see how the original ball moves. You need to
     // in order to implement the 'predict the ball' or 'invisible ball' methods.
     ball.Move(a_deltaTime, leftPaddle, rightPaddle);
@@ -136,7 +231,26 @@ void GUI()
     {
         // Show some basic stats in the settings window 
         ImGui::Text("%.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-        ImGui::Text("Score: %i : %i", leftPaddle.score, rightPaddle.score);
+        ImGui::Text("Score: %i : %i\n", leftPaddle.score, rightPaddle.score);
+		ImGui::Text("AI Info:");
+		ImGui::SliderFloat("Response Time:", &ai_reactiondelay, 0.f, 3.f);
+		ImGui::SliderFloat("Accuracy:", &ai_accuracy, 0.f, 1.f);
+		ImGui::Text("AIModes: | Player | Follow Ball | Follow Calc |");
+		ImGui::SliderInt("LAIMode", &aimode0, 0, 2);
+		ImGui::SliderInt("RAIMode", &aimode1, 0, 2);
+
+		ImGui::Text("\n\nDebug:");
+
+		if (ai_mode[0] == 3 || ai_mode[1] == 3)
+		{
+			ImGui::Text("timeToWall: "); ImGui::SameLine();
+			ImGui::TextColored(ImVec4(0, 1, 1, 1), "%.3f", timeToWall);
+			ImGui::Text("timeToGoal: "); ImGui::SameLine();
+			ImGui::TextColored(ImVec4(0, 1, 1, 1), "%.3f", timeToGoal);
+			ImGui::Text("goalYPos: "); ImGui::SameLine();
+			ImGui::TextColored(ImVec4(0, 1, 1, 1), "%.3f", finalY);
+		}
+
     }
     ImGui::End();
 }
